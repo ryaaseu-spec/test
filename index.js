@@ -137,7 +137,7 @@ async function findTrack(player, query, requester) {
   const isUrl = /^https?:\/\//i.test(query);
   const tries = isUrl
     ? [{ query }]
-    : [{ query, source: 'ytsearch' }, { query, source: 'scsearch' }];
+    : [{ query, source: 'spsearch' }, { query, source: 'scsearch' }, { query, source: 'ytsearch' }];
 
   for (const q of tries) {
     try {
