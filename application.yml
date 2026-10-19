@@ -6,6 +6,8 @@ lavalink:
   plugins:
     - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.2"
       snapshot: false
+    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.1"
+      snapshot: false
   server:
     password: "youshallnotpass"
     sources:
@@ -33,6 +35,28 @@ plugins:
       - ANDROID_VR
       - WEB
       - WEBEMBEDDED
+    oauth:
+      enabled: true
+      # first deploy: leave YT_REFRESH_TOKEN empty, read the logs for the google.com/device code,
+      # then put the printed refresh token in the Railway variable YT_REFRESH_TOKEN
+      refreshToken: "${YT_REFRESH_TOKEN:}"
+  lavasrc:
+    providers:
+      - "scsearch:%ISRC%"
+      - "scsearch:%QUERY%"
+      - "ytsearch:\"%ISRC%\""
+      - "ytsearch:%QUERY%"
+    sources:
+      spotify: true
+      applemusic: false
+      deezer: false
+      yandexmusic: false
+      flowerytts: false
+      youtube: false
+    spotify:
+      clientId: "${SPOTIFY_CLIENT_ID:}"
+      clientSecret: "${SPOTIFY_CLIENT_SECRET:}"
+      countryCode: "US"
 
 logging:
   level:
