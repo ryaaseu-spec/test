@@ -161,16 +161,30 @@ async function findTrack(player, query, requester) {
 
     if (yt) {
       const author = (yt.info.author || '').replace(/ - Topic$/i, '').replace(/VEVO$/i, '').trim();
-      let name = String(yt.info.title || '')
+      const base = String(yt.info.title || '')
         .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, ' ')
-        .replace(/[()\[\]|]/g, ' ')
+        .replace(/\/\/.*$/, ' ')                 // drop everything after "//"
         .replace(/official\s*(music\s*)?(video|audio)|lyrics?|video\s*clip|\bhd\b|\b4k\b/gi, ' ')
+        .replace(/[^\p{L}\p{N}\s'&-]/gu, ' ')    // drop symbols: + ( ) [ ] | ? ! etc.
         .replace(/\s+/g, ' ')
         .trim();
-      if (author && !name.toLowerCase().includes(author.toLowerCase())) name = `${name} ${author}`;
+      const noise = /\b(super\s*)?(slowed|sped\s*up|reverb|nightcore|8d|bass\s*boosted|edit)\b/gi;
+      const squash = (s) => s.replace(/\s+/g, ' ').trim();
+      const ascii = (s) => squash(s.replace(/[^\x20-\x7E]/g, ' '));
+      const withAuthor = (s) =>
+        (author && !s.includes(' - ') && !s.toLowerCase().includes(author.toLowerCase())) ? `${s} ${author}` : s;
 
-      const sc = await searchSC(name);
-      if (sc) return sc;
+      // try several versions of the name, from most to least specific
+      const variants = [...new Set([
+        withAuthor(base),
+        squash(base.replace(noise, ' ')),
+        ascii(base.replace(noise, ' ')),
+      ])].filter((s) => s.length >= 3);
+
+      for (const v of variants) {
+        const sc = await searchSC(v);
+        if (sc) return sc;
+      }
       return yt; // not on SoundCloud -> the YouTube track (may fail, trackError handles it)
     }
     return null;
