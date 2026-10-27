@@ -135,24 +135,58 @@ async function tempNotice(channelId, text, seconds = 10) {
 // ───────────── search with SoundCloud fallback ─────────────
 async function findTrack(player, query, requester) {
   const isUrl = /^https?:\/\//i.test(query);
-  const tries = isUrl
-    ? [{ query }]
-    : [{ query, source: 'spsearch' }, { query, source: 'scsearch' }, { query, source: 'ytsearch' }];
+  const isYouTube = /^https?:\/\/((www|m|music)\.)?(youtube\.com|youtu\.be)\//i.test(query);
 
-  for (const q of tries) {
+  const pick = (res) => {
+    if (!res || !res.tracks || !res.tracks.length || res.loadType === 'error') return null;
+    return res.loadType === 'playlist'
+      ? (res.tracks[res.pluginInfo?.selectedTrack ?? 0] || res.tracks[0])
+      : res.tracks[0];
+  };
+
+  const searchSC = async (text) => {
     try {
-      const res = await player.search(q, requester);
-      if (res && res.tracks && res.tracks.length && res.loadType !== 'error') {
-        const picked = res.loadType === 'playlist'
-          ? (res.tracks[res.pluginInfo?.selectedTrack ?? 0] || res.tracks[0])
-          : res.tracks[0];
-        return picked;
-      }
+      return pick(await player.search({ query: text, source: 'scsearch' }, requester));
     } catch (e) {
-      console.error('[search] failed for', JSON.stringify(q), e.message);
+      console.error('[search] soundcloud failed:', e.message);
+      return null;
     }
+  };
+
+  // 1) YouTube link -> read title from YouTube, then play the same song from SoundCloud
+  if (isYouTube) {
+    let yt = null;
+    try { yt = pick(await player.search({ query }, requester)); }
+    catch (e) { console.error('[search] youtube link failed:', e.message); }
+
+    if (yt) {
+      const author = (yt.info.author || '').replace(/ - Topic$/i, '').replace(/VEVO$/i, '').trim();
+      let name = String(yt.info.title || '')
+        .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, ' ')
+        .replace(/[()\[\]|]/g, ' ')
+        .replace(/official\s*(music\s*)?(video|audio)|lyrics?|video\s*clip|\bhd\b|\b4k\b/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (author && !name.toLowerCase().includes(author.toLowerCase())) name = `${name} ${author}`;
+
+      const sc = await searchSC(name);
+      if (sc) return sc;
+      return yt; // not on SoundCloud -> the YouTube track (may fail, trackError handles it)
+    }
+    return null;
   }
-  return null;
+
+  // 2) other links (SoundCloud, etc.) -> play as is
+  if (isUrl) {
+    try { return pick(await player.search({ query }, requester)); }
+    catch (e) { console.error('[search] link failed:', e.message); return null; }
+  }
+
+  // 3) plain text -> SoundCloud first, YouTube as backup
+  const sc = await searchSC(query);
+  if (sc) return sc;
+  try { return pick(await player.search({ query, source: 'ytsearch' }, requester)); }
+  catch (e) { console.error('[search] ytsearch failed:', e.message); return null; }
 }
 
 // ───────────── commands ─────────────
