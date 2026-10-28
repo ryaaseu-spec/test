@@ -132,78 +132,27 @@ async function tempNotice(channelId, text, seconds = 10) {
   } catch { /* ignore */ }
 }
 
-// ───────────── SoundCloud helpers ─────────────
-// Builds several cleaned-up versions of a song name (most specific -> simplest)
-function scQueryVariants(title, author) {
-  const auth = String(author || '').replace(/ - Topic$/i, '').replace(/VEVO$/i, '').trim();
-  const squash = (s) => s.replace(/\s+/g, ' ').trim();
-  const ascii = (s) => squash(s.replace(/[^\x20-\x7E]/g, ' '));
-  const base = squash(
-    String(title || '')
-      .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, ' ')
-      .replace(/\/\/.*$/, ' ')                 // drop everything after "//"
-      .replace(/official\s*(music\s*)?(video|audio)|lyrics?|video\s*clip|\bhd\b|\b4k\b/gi, ' ')
-      .replace(/[^\p{L}\p{N}\s'&-]/gu, ' ')    // drop symbols: + ( ) [ ] | ? ! etc.
-  );
-  const noise = /\b(super\s*)?(slowed|sped\s*up|reverb|nightcore|8d|bass\s*boosted|edit)\b/gi;
-  const noNoise = squash(base.replace(noise, ' '));
-  const withAuthor = (s) =>
-    (auth && !s.includes(' - ') && !s.toLowerCase().includes(auth.toLowerCase())) ? `${s} ${auth}` : s;
+// ───────────── search with SoundCloud fallback ─────────────
+async function findTrack(player, query, requester) {
+  const isUrl = /^https?:\/\//i.test(query);
+  const tries = isUrl
+    ? [{ query }]
+    : [{ query, source: 'ytsearch' }, { query, source: 'scsearch' }];
 
-  return [...new Set([withAuthor(base), noNoise, ascii(noNoise)])].filter((s) => s.length >= 3);
-}
-
-// Tries each variant on SoundCloud, returns the first track found (or null)
-async function searchSoundCloud(player, title, author, requester) {
-  for (const v of scQueryVariants(title, author)) {
+  for (const q of tries) {
     try {
-      const res = await player.search({ query: v, source: 'scsearch' }, requester);
-      const n = res?.tracks?.length || 0;
-      console.log(`[soundcloud] "${v}" -> ${res?.loadType} (${n} results)` +
-        (res?.exception?.message ? ` | ${res.exception.message}` : ''));
-      if (n && res.loadType !== 'error') return res.tracks[0];
+      const res = await player.search(q, requester);
+      if (res && res.tracks && res.tracks.length && res.loadType !== 'error') {
+        const picked = res.loadType === 'playlist'
+          ? (res.tracks[res.pluginInfo?.selectedTrack ?? 0] || res.tracks[0])
+          : res.tracks[0];
+        return picked;
+      }
     } catch (e) {
-      console.error(`[soundcloud] "${v}" failed:`, e.message);
+      console.error('[search] failed for', JSON.stringify(q), e.message);
     }
   }
   return null;
-}
-
-// ───────────── find a track ─────────────
-async function findTrack(player, query, requester) {
-  const isUrl = /^https?:\/\//i.test(query);
-  const isYouTube = /^https?:\/\/((www|m|music)\.)?(youtube\.com|youtu\.be)\//i.test(query);
-
-  const pick = (res) => {
-    if (!res || !res.tracks || !res.tracks.length || res.loadType === 'error') return null;
-    return res.loadType === 'playlist'
-      ? (res.tracks[res.pluginInfo?.selectedTrack ?? 0] || res.tracks[0])
-      : res.tracks[0];
-  };
-
-  // 1) YouTube link -> read the title from YouTube, then play the same song from SoundCloud
-  if (isYouTube) {
-    let yt = null;
-    try { yt = pick(await player.search({ query }, requester)); }
-    catch (e) { console.error('[search] youtube link failed:', e.message); }
-    if (!yt) return null;
-
-    const sc = await searchSoundCloud(player, yt.info.title, yt.info.author, requester);
-    if (sc) return sc;
-    return yt; // not on SoundCloud -> YouTube track (may fail, trackError handles it)
-  }
-
-  // 2) other links (SoundCloud, etc.) -> play as is
-  if (isUrl) {
-    try { return pick(await player.search({ query }, requester)); }
-    catch (e) { console.error('[search] link failed:', e.message); return null; }
-  }
-
-  // 3) plain text -> SoundCloud first, YouTube as backup
-  const sc = await searchSoundCloud(player, query, '', requester);
-  if (sc) return sc;
-  try { return pick(await player.search({ query, source: 'ytsearch' }, requester)); }
-  catch (e) { console.error('[search] ytsearch failed:', e.message); return null; }
 }
 
 // ───────────── commands ─────────────
@@ -303,19 +252,10 @@ async function handleButton(i) {
       if (player.paused) await player.resume().catch(() => {});
       try { await player.skip(0, false); } catch (e) { console.error('[skip]', e.message); }
       return;
-    case 'g:stop': {
-      // stop the music and clear the queue, but STAY in the voice channel (24/7)
+    case 'g:stop':
       await i.deferUpdate();
-      try { await player.stopPlaying(true, false); } catch (e) { console.error('[stop]', e.message); }
-      const panel = panels.get(player.guildId);
-      if (panel) {
-        panel.edit({
-          embeds: [soft('⏹ Stopped — I\'m staying in voice, use `/gorani` to play more ♡')],
-          components: [],
-        }).catch(() => {});
-      }
+      await player.destroy('stopped by user').catch(() => {});
       return;
-    }
     case 'g:queue': {
       const q = player.queue.tracks;
       let text = q.length ? '' : 'The queue is empty ♡';
@@ -353,7 +293,7 @@ client.once(Events.ClientReady, async () => {
     playerOptions: {
       defaultSearchPlatform: 'ytsearch',
       volumeDecrementer: 1,
-      // 24/7: no "destroyAfterMs" and no idle/alone timers -> the bot stays in voice until someone disconnects it
+      // no "destroyAfterMs" on purpose: the bot stays in voice until someone disconnects it
       onDisconnect: { autoReconnect: false, destroyPlayer: true },
     },
   });
@@ -390,10 +330,11 @@ client.once(Events.ClientReady, async () => {
 
     if (track.info.sourceName === 'youtube' && !fallbackTried.has(track.info.identifier)) {
       fallbackTried.add(track.info.identifier);
-      setTimeout(() => fallbackTried.delete(track.info.identifier), 60000); // allow retry later
       tempNotice(player.textChannelId, `⚠️ YouTube blocked **${title}**, trying SoundCloud…`);
       try {
-        const alt = await searchSoundCloud(player, track.info.title, track.info.author, track.requester);
+        const author = (track.info.author || '').replace(/ - Topic$/, '');
+        const res = await player.search({ query: `${track.info.title} ${author}`.trim(), source: 'scsearch' }, track.requester);
+        const alt = res?.tracks?.[0];
         if (alt) {
           await player.queue.splice(0, 0, alt);
           if (!player.playing) await player.play();
