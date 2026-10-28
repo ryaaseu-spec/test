@@ -33,10 +33,19 @@ const command = new SlashCommandBuilder()
   .setName(COMMAND_NAME)
   .setDescription('Join your voice channel and stay there until someone disconnects me 🎀');
 
-// registers ONLY our command in a server (this also deletes the old /gorani)
-async function registerCommands(guild) {
-  try { await guild.commands.set([command.toJSON()]); }
-  catch (e) { console.error('[commands] register failed for', guild.id, e.message); }
+// Adds OUR command only if it is missing.
+// IMPORTANT: this never overwrites or deletes other commands (the Python bot with the same
+// token has its own slash commands: /staff, /autorole, ...), so we only create ours.
+async function ensureCommand(guild) {
+  try {
+    const existing = await guild.commands.fetch();
+    if (!existing.some((c) => c.name === COMMAND_NAME)) {
+      await guild.commands.create(command.toJSON());
+      console.log(`[commands] added /${COMMAND_NAME} in ${guild.name}`);
+    }
+  } catch (e) {
+    console.error('[commands] ensure failed for', guild.id, e.message);
+  }
 }
 
 // ───────────── join a voice channel and stay (24/7) ─────────────
@@ -147,16 +156,18 @@ client.once(Events.ClientReady, async () => {
   console.log(`[allmas] logged in as ${client.user.tag}`);
   console.log(generateDependencyReport());
 
-  // remove any old global commands, then keep only /join-vc-allmas in every server
-  try { await client.application.commands.set([]); }
-  catch (e) { console.error('[commands] clearing global commands failed:', e.message); }
-  for (const guild of client.guilds.cache.values()) await registerCommands(guild);
+  // add /join-vc-allmas where it is missing (never touches other commands)
+  for (const guild of client.guilds.cache.values()) await ensureCommand(guild);
+  // the other bot may re-sync its commands later, so re-check every 5 minutes
+  setInterval(() => {
+    for (const guild of client.guilds.cache.values()) ensureCommand(guild);
+  }, 5 * 60 * 1000);
 
   await autoJoin();
   console.log('[allmas] ready');
 });
 
-client.on(Events.GuildCreate, (guild) => registerCommands(guild));
+client.on(Events.GuildCreate, (guild) => ensureCommand(guild));
 
 client.on(Events.InteractionCreate, async (i) => {
   try {
