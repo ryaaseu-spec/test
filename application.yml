@@ -1,0 +1,46 @@
+server:
+  port: 2333
+  address: "::"   # listen on IPv6+IPv4 so Railway private networking works
+
+lavalink:
+  plugins:
+    - dependency: "dev.lavalink.youtube:youtube-plugin:f45bbb7aebfcbc1c553769e04af6cd43afa8b7c3"
+      repository: "https://maven.lavalink.dev/snapshots"
+      snapshot: true
+  server:
+    password: "${LAVALINK_SERVER_PASSWORD:youshallnotpass}"
+    sources:
+      youtube: false      # the built-in source is replaced by the plugin above
+      bandcamp: true
+      soundcloud: true
+      twitch: true
+      vimeo: true
+      http: true
+      local: false
+    bufferDurationMs: 400
+    frameBufferDurationMs: 5000
+    playerUpdateInterval: 5
+    gc-warnings: true
+
+plugins:
+  youtube:
+    enabled: true
+    allowSearch: true
+    allowDirectVideoIds: true
+    allowDirectPlaylistIds: true
+    clients:
+      - MUSIC
+      - TV
+      - ANDROID_VR
+      - WEB
+      - WEBEMBEDDED
+    # oauth:
+    #   enabled: false
+    # pot:
+    #   token: "PASTE_PO_TOKEN"
+    #   visitorData: "PASTE_VISITOR_DATA"
+
+logging:
+  level:
+    root: INFO
+    lavalink: INFO
