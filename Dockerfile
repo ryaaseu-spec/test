@@ -1,3 +1,6 @@
-# Lavalink 4.2.0+ is required (first version with DAVE voice encryption support)
-FROM ghcr.io/lavalink-devs/lavalink:4
-COPY application.yml /opt/Lavalink/application.yml
+FROM node:22-slim
+WORKDIR /app
+COPY package.json ./
+RUN npm install --omit=dev
+COPY index.js ./
+CMD ["node", "index.js"]

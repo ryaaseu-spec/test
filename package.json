@@ -1,7 +1,7 @@
 {
-  "name": "gorani-bot-js",
-  "version": "1.0.0",
-  "description": "Gorani Discord music bot (discord.js + Lavalink)",
+  "name": "allmas-vc-bot",
+  "version": "2.0.0",
+  "description": "Allmas - joins a voice channel and stays there 24/7 (discord.js + @discordjs/voice)",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "discord.js": "^14.16.0",
-    "lavalink-client": "^2.10.0"
+    "@discordjs/voice": ">=0.19.0",
+    "@snazzah/davey": ">=0.1.0",
+    "libsodium-wrappers": "^0.7.15"
   }
 }
