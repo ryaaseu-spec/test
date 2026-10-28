@@ -303,10 +303,19 @@ async function handleButton(i) {
       if (player.paused) await player.resume().catch(() => {});
       try { await player.skip(0, false); } catch (e) { console.error('[skip]', e.message); }
       return;
-    case 'g:stop':
+    case 'g:stop': {
+      // stop the music and clear the queue, but STAY in the voice channel (24/7)
       await i.deferUpdate();
-      await player.destroy('stopped by user').catch(() => {});
+      try { await player.stopPlaying(true, false); } catch (e) { console.error('[stop]', e.message); }
+      const panel = panels.get(player.guildId);
+      if (panel) {
+        panel.edit({
+          embeds: [soft('⏹ Stopped — I\'m staying in voice, use `/gorani` to play more ♡')],
+          components: [],
+        }).catch(() => {});
+      }
       return;
+    }
     case 'g:queue': {
       const q = player.queue.tracks;
       let text = q.length ? '' : 'The queue is empty ♡';
@@ -344,7 +353,7 @@ client.once(Events.ClientReady, async () => {
     playerOptions: {
       defaultSearchPlatform: 'ytsearch',
       volumeDecrementer: 1,
-      // no "destroyAfterMs" on purpose: the bot stays in voice until someone disconnects it
+      // 24/7: no "destroyAfterMs" and no idle/alone timers -> the bot stays in voice until someone disconnects it
       onDisconnect: { autoReconnect: false, destroyPlayer: true },
     },
   });
